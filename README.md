@@ -4,9 +4,13 @@ This is a toolkit to calculate semantic similarity using LSTM or BERT for the im
 Liu X, You X, Zhang X, et al. Tensor graph convolutional networks for text classification[C]//Proceedings of the AAAI Conference on Artificial Intelligence. 2020, 34(05): 8409-8416.
 
 # Requirement
+
 nltk
+
 pytorch
+
 transformers >= 4.11.3
+
 
 # Usage
 ## BERT based similarity
