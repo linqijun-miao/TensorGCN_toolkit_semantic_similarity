@@ -13,6 +13,9 @@ transformers >= 4.11.3
 
 
 # Usage
+
+Strongly recommend you to use BERT version, makes your life a little bit easier!
+
 ## BERT based similarity
 
 ```python
