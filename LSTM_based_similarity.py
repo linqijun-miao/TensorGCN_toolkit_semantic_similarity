@@ -5,6 +5,8 @@ from torch import nn, optim
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence
 from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
+
 save_model = True
 model_path = './new_lstm.pth'
 use_cuda = torch.cuda.is_available()
@@ -25,8 +27,8 @@ class TextClassifier(nn.Module):
             nn.ReLU(),
             nn.Linear(embedding_size, 2)
         )
-    def forward(self, user):
-        text = [item[0] for item in user.tweets]
+    def forward(self, sentences):
+        text = sentences
         max_length = max(len(s) for s in text)
         embedding, sorted_len, reversed_indices = self.embedding_lookup(text, max_length)
         packed_embed = pack_padded_sequence(embedding, sorted_len, batch_first=True)
@@ -89,16 +91,32 @@ def cal_metrics(prediction, ground_truth):
     return acc, m_precision, m_recall, m_F1
 
 
-def train_model(train_data,test_data):
-    vocab = set()
+class UserDataset(Dataset):
+    def __init__(self, data,label):
+        self.ds = []
+        self.vocab = set()
+        self.word2id = {}
+        self.labels = label
 
-    for sen in train_data+test_data:
-        cleaned_sen = [w.lower() for w in sen.split()]
-        vocab.update(cleaned_sen)
-    word2id = {word: id for id, word in enumerate(vocab)}
-    train_loader = DataLoader(train_data, batch_size=1,  shuffle=True)
-    dev_loader = DataLoader(test_data, batch_size=1)
-    model = TextClassifier(vocab_size=len(vocab), embedding_size=128, word2id=word2id)
+        for sen in data:
+            cleaned_sen = [w.lower() for w in sen.split()]
+            self.vocab.update(cleaned_sen)
+            self.ds.append(cleaned_sen)
+        self.word2id = {word: id for id, word in enumerate(self.vocab)}
+
+    def __getitem__(self, index):
+
+        return self.ds[index], self.labels[index]
+
+    def __len__(self):
+        return len(self.ds)
+
+
+def train_model(train_data,train_label,test_data,test_label):
+    train_dataset = UserDataset(train_data,train_label)
+    train_loader = DataLoader(train_dataset, batch_size=1,  shuffle=True)
+    dev_loader = DataLoader(UserDataset(test_data,test_label), batch_size=1)
+    model = TextClassifier(vocab_size=len(train_dataset.vocab), embedding_size=128, word2id=train_dataset.word2id)
     model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     loss_fn = nn.CrossEntropyLoss()
@@ -113,11 +131,11 @@ def train_model(train_data,test_data):
         ground_truth = []
         train_loss = 0
         bar.start()
-        for user, label in train_loader:
+        for sentence, label in train_loader:
             i += 1
-            user = user[0]
+
             ground_truth += label
-            output,_ = model(user)
+            output,_ = model([sentence])
             prediction = torch.max(output, 1, keepdim=False)[1].item()
             predictions.append(prediction)
             optimizer.zero_grad()
@@ -135,10 +153,10 @@ def train_model(train_data,test_data):
         ground_truth = []
         dev_loss = 0
         with torch.no_grad():
-            for user, label in dev_loader:
-                user = user[0]
+            for sentence, label in dev_loader:
+
                 ground_truth += label
-                output,_ = model(user)
+                output,_ = model([sentence])
                 prediction = torch.max(output, 1, keepdim=False)[1].item()
                 predictions.append(prediction)
                 loss = loss_fn(output, torch.Tensor(label).long().to(device))
@@ -152,9 +170,11 @@ def train_model(train_data,test_data):
         break
 
 
-def get_similarity(train_data,test_data,similarity_threshold = 0.5):
 
-    dev_loader = DataLoader(train_data+test_data, batch_size=1)
+
+def get_similarity(train_data,train_label,test_data,test_label,similarity_threshold = 0.5):
+
+    dev_loader = DataLoader(UserDataset(train_data+test_data,train_label+test_label), batch_size=1)
 
     model = torch.load(model_path)
 
@@ -165,20 +185,17 @@ def get_similarity(train_data,test_data,similarity_threshold = 0.5):
 
     model.eval()
     with torch.no_grad():
-        for user, label in dev_loader:
-            user = user[0]
-            t = user.tweets
-            for i in t:
-                tweet = i[0]
-                embedding, sorted_len, reversed_indices = model.embedding_lookup([tweet], len(tweet))
+        for sentence, label in dev_loader:
+
+                embedding, sorted_len, reversed_indices = model.embedding_lookup([sentence], len(sentence))
                 packed_embed = pack_padded_sequence(embedding, sorted_len, batch_first=True)
 
                 each, (h, c) = model.sentenceEncoder2(packed_embed)
 
-                for word in range(0, len(tweet)):
-                    for another in range(0, len(tweet)):
-                        w1 = tweet[word]
-                        w2 = tweet[another]
+                for word in range(0, len(sentence)):
+                    for another in range(0, len(sentence)):
+                        w1 = sentence[word]
+                        w2 = sentence[another]
                         s = torch.cosine_similarity(each.data[word].view(1, -1), each.data[another].view(1, -1), dim=1)
                         key = '' + w1 + ',' + w2
                         if key not in total_set.keys():
