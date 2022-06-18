@@ -27,3 +27,9 @@ f.close()
 
 ## LSTM based similarity
 You will need to train your LSTM model first using train_model(train_data,test_data), therefore you will split your data into two part!
+
+```python
+# DO NOT TOKENIZE YOUR SENTENCE!!!!!! [[sentence0],[sentence1],[sentence2],[sentence3],.......]
+train_model(train_data,train_label,test_data,test_label)
+get_similarity(train_data,train_label,test_data,test_label)
+```
